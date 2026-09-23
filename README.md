@@ -44,7 +44,14 @@ _Будет добавлено перед Demo Day — пока что живы�
 
 ---
 
-##  Обзор
+##  Проблема
+
+Площадка-агрегатор event-подрядчиков в Казахстане уже показала заказчику каталог по его городу —
+но каталог сам по себе не решение, это просто более длинный список. Задача не «найти подрядчиков»,
+а «помочь выбрать из уже найденных»: заказчик не должен вручную сверять бюджет, занятость на дату,
+формат мероприятия и язык для каждой из десятков карточек подряд.
+
+##  Решение
 
 Пользователь-заказчик мероприятия вводит параметры (город, дата, тип события, категория подрядчика,
 бюджет, опционально — язык, длительность и свободный текст запроса) и получает до 3 карточек
@@ -125,6 +132,33 @@ AI используется в двух разных, не пересекающ�
 * Сравнение одного запроса на двух датах бок о бок — наглядно показывает, что разница именно в занятости
 * Для `none_fit` — разбивка условий по карточкам «какое условие сколько кандидатов отсеяло» и визуальная воронка отсева; для `no_category` — предложение соседних городов, где категория есть
 * 95 тестов: 422 на невалидный ввод, детерминизм, «AI никогда не меняет состав/порядок карточек» — проверено явно, а не предполагается
+
+---
+
+## 🛠 Technologies We Used
+
+The stack is deliberately simple — every piece earns its place, nothing is there for show.
+
+* **Python** — the filtering and ranking logic. This is the part that actually decides who gets recommended.
+* **FastAPI** — turns that Python logic into an API the frontend can call:
+
+  ```text
+  Frontend
+     ↓
+  POST /api/match
+     ↓
+  Backend (filter → rank → explain)
+     ↓
+  Results
+  ```
+
+* **Groq API** — fast inference access to an LLM, used only where explained in [Два AI-слоя](#два-ai-слоя-до-поиска-и-после) above.
+* **`openai/gpt-oss-120b`** — the model behind both AI layers: understanding free-text requests and writing the explanation text (`DEFAULT_MODEL` in `backend/llm_explainer.py`, overridable via `GROQ_MODEL`).
+* **CSV** — `data/hackathon_dataset.csv` stores the partner-provided contractor dataset: 66 real profiles.
+* **Pydantic** — validates every incoming request (`backend/models.py`, `backend/frontend_api.py`): rejects invalid dates, non-positive budgets, and out-of-range values before they ever reach the matching logic.
+* **Pytest** — 95 automated tests covering filtering, ranking, the AI layers (with dependency-injected fakes, no real API calls needed), and the API contract itself.
+* **HTML + CSS + JavaScript** — the frontend, no build step, no framework.
+* **Git + GitHub** — how the team stores the code, collaborates across three members, and submits the project.
 
 ---
 
@@ -419,6 +453,18 @@ Swagger: `http://localhost:8000/docs`.
 Без `GROQ_API_KEY` (или при `ENABLE_LLM_EXPLANATIONS=false`/`ENABLE_LLM_INTENT=false`) сервис работает
 полностью детерминированно — разбора свободного текста и переписывания объяснений не будет, поведение
 фильтров и ранжирования не меняется.
+
+####  Environment Variables
+
+| Переменная | Обязательна | По умолчанию | Что делает |
+| --- | --- | --- | --- |
+| `GROQ_API_KEY` | Нет | — (пусто) | Без ключа оба AI-слоя выключены; сервис работает полностью детерминированно |
+| `ENABLE_LLM_EXPLANATIONS` | Нет | `true` в `.env.example`; нужен ключ | Разрешает Groq переписывать текст объяснения (слой 2) |
+| `ENABLE_LLM_INTENT` | Нет | наследует `ENABLE_LLM_EXPLANATIONS` | Разрешает Groq разбирать свободный текст запроса (слой 1) |
+| `GROQ_MODEL` | Нет | `openai/gpt-oss-120b` | Модель для обоих AI-слоёв |
+| `GROQ_TIMEOUT_S` | Нет | `8` | Таймаут на вызов Groq; при превышении — детерминированный fallback, а не ошибка |
+
+Полный список с комментариями — в [`.env.example`](./.env.example).
 
 ###  Frontend
 
