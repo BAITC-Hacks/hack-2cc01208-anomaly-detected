@@ -28,7 +28,7 @@
 
 ###  Video Demo
 
-_Будет добавлено перед Demo Day — пока что живые скриншоты пайплайна ниже, в разделе «Скриншоты»._
+[`video/Untitled Project.mp4`](./video/Untitled%20Project.mp4)
 
 <br>
 
