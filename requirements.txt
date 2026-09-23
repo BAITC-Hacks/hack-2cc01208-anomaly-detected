@@ -1,0 +1,12 @@
+# Direct dependencies only (tested on Python 3.13). ~= allows patch updates.
+
+# Runtime
+fastapi~=0.141.1
+uvicorn[standard]~=0.53.0
+pydantic~=2.13.5
+groq~=1.7.0
+python-dotenv~=1.2.3
+
+# Tests
+pytest~=9.1.1
+httpx~=0.28.1
