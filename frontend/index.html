@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Подбор подрядчиков</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='14' fill='%23004357'/%3E%3Cpath d='M13 24l8 8 16-16' fill='none' stroke='white' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <div class="brand-text">
+          <h1>Подбор подрядчиков</h1>
+          <p class="sub">До 3 подрядчиков из каталога города и объяснение, почему каждый подходит</p>
+        </div>
+      </div>
+      <label class="switch" title="Работать без бэкенда, на локальных примерах">
+        <span class="switch-label">Демо-режим</span>
+        <input type="checkbox" id="demoMode" role="switch">
+        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+      </label>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- Левая колонка: форма поиска -->
+    <aside class="sidebar">
+      <form id="form" class="form" aria-label="Параметры заказа">
+        <div class="form-head">
+          <h2>Параметры заказа</h2>
+          <p>Заполните поля или выберите демо-запрос</p>
+        </div>
+
+        <div class="field">
+          <label for="city">Город</label>
+          <select name="city" id="city" required></select>
+        </div>
+        <div class="field">
+          <label for="date">Дата</label>
+          <input type="date" name="date" id="date" min="2026-09-23" max="2026-12-31" required>
+        </div>
+        <div class="field">
+          <label for="event_type">Тип мероприятия</label>
+          <select name="event_type" id="event_type" required></select>
+        </div>
+        <div class="field">
+          <label for="category">Категория</label>
+          <select name="category" id="category" required></select>
+        </div>
+        <div class="field">
+          <label for="budget_kzt">Бюджет, ₸</label>
+          <input type="number" name="budget_kzt" id="budget_kzt" min="1" step="1000" inputmode="numeric" required placeholder="например, 500000">
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="hours">Часы <span class="opt">необяз.</span></label>
+            <input type="number" name="hours" id="hours" min="1" max="24" inputmode="numeric" placeholder="—">
+          </div>
+          <div class="field">
+            <label for="language">Язык <span class="opt">необяз.</span></label>
+            <select name="language" id="language"></select>
+          </div>
+        </div>
+
+        <button type="submit" id="submitBtn" class="primary">Подобрать</button>
+      </form>
+    </aside>
+
+    <!-- Правая колонка: демо-запросы и результаты -->
+    <main class="content">
+      <section class="shortcuts" aria-label="Быстрые демо-запросы">
+        <span class="shortcuts-label">Быстрые демо-запросы</span>
+        <div class="chips-scroll">
+          <button type="button" data-preset="dense">1 · Популярная категория, осень</button>
+          <button type="button" data-preset="rare">2 · Редкая категория</button>
+          <button type="button" data-preset="december">3 · То же, что №1, но в декабре</button>
+          <button type="button" data-preset="nofit">4 · Кандидаты есть, но не подходят</button>
+          <button type="button" data-preset="empty">5 · Категории нет в городе</button>
+        </div>
+      </section>
+
+      <div id="error" class="error" role="alert" hidden></div>
+      <div id="results" aria-live="polite">
+        <div class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <p>Заполните параметры заказа или выберите демо-запрос</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="mock.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

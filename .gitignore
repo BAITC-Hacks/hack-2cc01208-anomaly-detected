@@ -13,3 +13,7 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
+
+# Референсы дизайна (не коммитим)
+aistudio/
+frontend/_stitch*
