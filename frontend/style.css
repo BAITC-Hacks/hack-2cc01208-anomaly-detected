@@ -66,9 +66,33 @@ h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap; /* на узком экране переключатели уходят на вторую строку */
+  gap: 8px 12px;
 }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.top-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+/* Переключатель языка интерфейса: RU · KZ · EN */
+.ui-lang {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--surface-low);
+}
+.ui-lang button {
+  min-width: 36px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ui-lang button:hover { background: var(--surface-high); }
+.ui-lang button.on { background: var(--primary); color: #fff; }
 .logo {
   flex: 0 0 36px;
   height: 36px;
@@ -483,6 +507,7 @@ button.outline-sm:hover { background: #eef5f8; }
   padding: 14px;
 }
 .why .icon { flex: 0 0 auto; color: var(--primary); margin-top: 3px; }
+.why-text { min-width: 0; }
 .explanation {
   margin: 0;
   font-size: 17px;
@@ -490,6 +515,8 @@ button.outline-sm:hover { background: #eef5f8; }
   font-weight: 500;
   color: var(--text);
 }
+/* Для KZ/EN: объяснение от бэкенда на русском — говорим об этом тихо */
+.expl-note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 
 /* ---------- Полоса «Отсеяно N кандидатов» ---------- */
 .excluded-bar {

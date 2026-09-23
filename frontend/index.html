@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Тексты с атрибутом data-i18n подставляет app.js из i18n.js (RU / KZ / EN) -->
   <header class="top">
     <div class="top-inner">
       <div class="brand">
@@ -15,50 +16,57 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
         </div>
         <div class="brand-text">
-          <h1>Подбор подрядчиков</h1>
-          <p class="sub">До 3 подрядчиков из каталога города и объяснение, почему каждый подходит</p>
+          <h1 data-i18n="title">Подбор подрядчиков</h1>
+          <p class="sub" data-i18n="subtitle">До 3 подрядчиков из каталога города и объяснение, почему каждый подходит</p>
         </div>
       </div>
-      <label class="switch" title="Работать без бэкенда, на локальных примерах">
-        <span class="switch-label">Демо-режим</span>
-        <input type="checkbox" id="demoMode" role="switch">
-        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-      </label>
+      <div class="top-controls">
+        <div class="ui-lang" role="group" data-i18n-aria="uiLang" aria-label="Язык интерфейса">
+          <button type="button" data-ui-lang="ru">RU</button>
+          <button type="button" data-ui-lang="kk">KZ</button>
+          <button type="button" data-ui-lang="en">EN</button>
+        </div>
+        <label class="switch" data-i18n-title="demoHint" title="Работать без бэкенда, на локальных примерах">
+          <span class="switch-label" data-i18n="demoMode">Демо-режим</span>
+          <input type="checkbox" id="demoMode" role="switch">
+          <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+        </label>
+      </div>
     </div>
   </header>
 
   <div class="layout">
     <!-- Левая колонка: форма поиска -->
     <aside class="sidebar">
-      <form id="form" class="form" aria-label="Параметры заказа">
+      <form id="form" class="form" data-i18n-aria="formTitle" aria-label="Параметры ивента">
         <div class="form-head">
-          <h2>Параметры ивента</h2>
-          <p>Алгоритм выберет максимум 3 лучших совпадения</p>
+          <h2 data-i18n="formTitle">Параметры ивента</h2>
+          <p data-i18n="formSub">Алгоритм выберет максимум 3 лучших совпадения</p>
         </div>
 
         <div class="field">
-          <label for="city">Город проведения</label>
+          <label for="city" data-i18n="city">Город проведения</label>
           <div class="input-wrap">
             <svg class="in-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
             <select name="city" id="city" required></select>
           </div>
         </div>
         <div class="field">
-          <label for="date">Дата события</label>
+          <label for="date" data-i18n="date">Дата события</label>
           <div class="input-wrap">
             <svg class="in-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
             <input type="date" name="date" id="date" min="2026-09-23" max="2026-12-31" required>
           </div>
         </div>
         <div class="field">
-          <label for="event_type">Формат события</label>
+          <label for="event_type" data-i18n="eventType">Формат события</label>
           <div class="input-wrap">
             <svg class="in-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 14 10M14 4v2M20 10h-2M18.5 5.5 17 7M9 4.5 10 6M19.5 15 18 14"/></svg>
             <select name="event_type" id="event_type" required></select>
           </div>
         </div>
         <div class="field">
-          <label for="category">Категория специалиста</label>
+          <label for="category" data-i18n="category">Категория специалиста</label>
           <div class="input-wrap">
             <svg class="in-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
             <select name="category" id="category" required></select>
@@ -66,24 +74,24 @@
         </div>
         <div class="field">
           <div class="label-line">
-            <label for="budget_kzt">Максимальный бюджет</label>
+            <label for="budget_kzt" data-i18n="budget">Максимальный бюджет</label>
             <span class="label-hint" id="budgetHint"></span>
           </div>
           <div class="input-wrap has-suffix">
             <svg class="in-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>
-            <input type="number" name="budget_kzt" id="budget_kzt" min="1" step="1000" inputmode="numeric" required placeholder="например, 500000">
+            <input type="number" name="budget_kzt" id="budget_kzt" min="1" step="1000" inputmode="numeric" required data-i18n-ph="budgetPh" placeholder="например, 500000">
             <span class="suffix" aria-hidden="true">₸</span>
           </div>
         </div>
         <div class="field">
-          <label for="hours">Длительность программы, ч <span class="opt">необяз.</span></label>
+          <label for="hours"><span data-i18n="hours">Длительность программы, ч</span> <span class="opt" data-i18n="optional">необяз.</span></label>
           <div class="input-wrap">
             <svg class="in-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-            <input type="number" name="hours" id="hours" min="1" max="24" inputmode="numeric" placeholder="например, 6">
+            <input type="number" name="hours" id="hours" min="1" max="24" inputmode="numeric" data-i18n-ph="hoursPh" placeholder="например, 6">
           </div>
         </div>
         <div class="field">
-          <span class="field-label" id="langLabel">Язык ведения <span class="opt">необяз.</span></span>
+          <span class="field-label" id="langLabel"><span data-i18n="language">Язык ведения</span> <span class="opt" data-i18n="optional">необяз.</span></span>
           <!-- Чипы управляют скрытым select#language: API принимает один язык -->
           <div class="lang-chips" id="langChips" role="radiogroup" aria-labelledby="langLabel"></div>
           <select name="language" id="language" hidden></select>
@@ -91,7 +99,7 @@
 
         <button type="submit" id="submitBtn" class="primary">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg>
-          <span id="submitText">Подобрать</span>
+          <span id="submitText" data-i18n="submit">Подобрать</span>
         </button>
       </form>
       <!-- Когда никто не подошёл: форма сворачивается в сводку условий (заполняет app.js) -->
@@ -100,14 +108,14 @@
 
     <!-- Правая колонка: демо-запросы и результаты -->
     <main class="content">
-      <section class="shortcuts" aria-label="Быстрые демо-запросы">
-        <span class="shortcuts-label">Быстрые демо-запросы</span>
+      <section class="shortcuts" data-i18n-aria="shortcuts" aria-label="Быстрые демо-запросы">
+        <span class="shortcuts-label" data-i18n="shortcuts">Быстрые демо-запросы</span>
         <div class="chips-scroll">
-          <button type="button" data-preset="dense">1 · Популярная категория, осень</button>
-          <button type="button" data-preset="rare">2 · Редкая категория</button>
-          <button type="button" data-preset="december">3 · То же, что №1, но в декабре</button>
-          <button type="button" data-preset="nofit">4 · Кандидаты есть, но не подходят</button>
-          <button type="button" data-preset="empty">5 · Категории нет в городе</button>
+          <button type="button" data-preset="dense" data-i18n="preset1">1 · Популярная категория, осень</button>
+          <button type="button" data-preset="rare" data-i18n="preset2">2 · Редкая категория</button>
+          <button type="button" data-preset="december" data-i18n="preset3">3 · То же, что №1, но в декабре</button>
+          <button type="button" data-preset="nofit" data-i18n="preset4">4 · Кандидаты есть, но не подходят</button>
+          <button type="button" data-preset="empty" data-i18n="preset5">5 · Категории нет в городе</button>
         </div>
       </section>
 
@@ -115,13 +123,14 @@
       <div id="results" aria-live="polite">
         <div class="empty-state">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <p>Заполните параметры заказа или выберите демо-запрос</p>
+          <p data-i18n="empty">Заполните параметры заказа или выберите демо-запрос</p>
         </div>
       </div>
     </main>
   </div>
 
   <script src="mock.js"></script>
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

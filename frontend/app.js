@@ -1,11 +1,12 @@
 // Фронтенд подбора подрядчиков. Без сборки и без библиотек.
-// Поток: форма → POST /api/match (или mockMatch в демо-режиме) → renderPanel().
+// Поток: форма → POST /api/match (или mockMatch в демо-режиме) → renderView().
+// Тексты интерфейса — в i18n.js: t("ключ") и vl(значение из API).
 
 // Адрес бэкенда. Можно переопределить так: index.html?api=http://192.168.1.10:8000
 const API_BASE = new URLSearchParams(location.search).get("api") || "http://localhost:8000";
 const MATCH_TIMEOUT_MS = 15000;
 
-// Запасные списки, если GET /api/options недоступен
+// Запасные списки, если GET /api/options недоступен (значения — как в API, на русском)
 const FALLBACK_OPTIONS = {
   cities: ["Алматы", "Астана", "Зарубежье"],
   event_formats: ["свадьба", "той", "корпоратив", "конференция", "юбилей", "день рождения"],
@@ -26,33 +27,8 @@ const PRESETS = {
   empty:    { city: "Зарубежье", date: "2026-11-14", event_type: "корпоратив", category: "Банкетный зал", budget_kzt: 100000 }
 };
 
-// Подписи для причин исключения (поле excluded в ответе)
-// [форма для 1/21/31…, форма для остальных чисел] — глагол согласуется с числом
-const EXCLUDED_LABELS = {
-  busy_on_date: ["занят в эту дату", "заняты в эту дату"],
-  over_budget: ["дороже бюджета", "дороже бюджета"],
-  wrong_format: ["не берёт этот формат", "не берут этот формат"],
-  wrong_language: ["не работает на этом языке", "не работают на этом языке"],
-  too_few_hours: ["не может работать столько часов", "не могут работать столько часов"]
-};
-
-// Русское множественное число: plural(5, "подрядчик", "подрядчика", "подрядчиков") → "подрядчиков"
-function plural(n, one, few, many) {
-  const d = n % 10, dd = n % 100;
-  if (d === 1 && dd !== 11) return one;
-  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return few;
-  return many;
-}
-function excludedLabel(key, n) {
-  const [one, many] = EXCLUDED_LABELS[key];
-  return n % 10 === 1 && n % 100 !== 11 ? one : many;
-}
-
-const STATUS_TITLES = {
-  found: "Подобрали",
-  no_category: "Такой категории в этом городе нет",
-  none_fit: "Кандидаты есть, но ни один не подходит"
-};
+// Причины исключения (поле excluded в ответе); подписи — t("excludedLabel", key, n)
+const EXCLUDED_KEYS = ["busy_on_date", "over_budget", "wrong_format", "wrong_language", "too_few_hours"];
 
 const $ = (id) => document.getElementById(id);
 const form = $("form");
@@ -60,6 +36,11 @@ const submitBtn = $("submitBtn");
 const resultsEl = $("results");
 const errorEl = $("error");
 const demoCheckbox = $("demoMode");
+
+let formLanguages = FALLBACK_OPTIONS.languages; // языки для чипов формы
+let lastView = null;  // последний показанный результат — перерисовываем его при смене языка
+let lastError = null; // последняя ошибка — тоже переводим при смене языка
+let loading = false;
 
 // ---------- Утилиты ----------
 
@@ -82,12 +63,25 @@ function formatDate(iso) {
   return `${d}.${m}.${y}`;
 }
 
-// ["Алматы", "17.10.2026", "свадьба", "Ведущий", "до 1 000 000 ₸", "5 ч", "казахский"]
+// Части запроса для сводки: [{text, cls}]
 function requestParts(req) {
-  const parts = [req.city, formatDate(req.date), req.event_type, req.category, `до ${formatPrice(req.budget_kzt)} ₸`];
-  if (req.hours) parts.push(`${req.hours} ч`);
-  if (req.language) parts.push(req.language);
+  const parts = [
+    { text: vl(req.city) },
+    { text: formatDate(req.date), cls: "date" },
+    { text: vl(req.event_type) },
+    { text: vl(req.category) },
+    { text: t("upTo", formatPrice(req.budget_kzt)), cls: "budget" }
+  ];
+  if (req.hours) parts.push({ text: t("hoursShort", req.hours) });
+  if (req.language) parts.push({ text: vl(req.language) });
   return parts;
+}
+
+// Ошибка с ключом перевода: текст подставится на текущем языке
+function i18nError(key, ...args) {
+  const e = new Error(key);
+  e.i18n = { key, args };
+  return e;
 }
 
 // Простые SVG-иконки (свои строки-константы, без внешних библиотек)
@@ -119,10 +113,16 @@ function icon(name, size) {
   return span;
 }
 
-function fillSelect(select, values, emptyLabel) {
+// В option.value — русское значение для API, в тексте — перевод
+function fillSelect(select, values, withEmpty) {
   select.innerHTML = "";
-  if (emptyLabel) select.appendChild(new Option(emptyLabel, ""));
-  values.forEach((v) => select.appendChild(new Option(v, v)));
+  if (withEmpty) select.appendChild(new Option(t("anyLang"), ""));
+  values.forEach((v) => select.appendChild(new Option(vl(v), v)));
+}
+function relabelSelects() {
+  ["city", "event_type", "category", "language"].forEach((id) => {
+    Array.from($(id).options).forEach((o) => { o.text = o.value ? vl(o.value) : t("anyLang"); });
+  });
 }
 
 // localStorage может быть недоступен (приватный режим, file://) — не падаем
@@ -150,7 +150,7 @@ function readForm() {
   return req;
 }
 
-// Вызов бэкенда или mock. Бросает Error с понятным русским текстом.
+// Вызов бэкенда или mock. Бросает ошибку с ключом перевода.
 async function match(req) {
   if (demoCheckbox.checked) {
     await new Promise((r) => setTimeout(r, 400)); // имитируем задержку сети
@@ -168,15 +168,15 @@ async function match(req) {
       signal: controller.signal
     });
   } catch (e) {
-    if (e.name === "AbortError") throw new Error("Сервер не ответил за 15 секунд. Попробуйте ещё раз.");
-    throw new Error(`Не удалось связаться с сервером (${API_BASE}). Запустите бэкенд или включите «Демо-режим» вверху справа.`);
+    if (e.name === "AbortError") throw i18nError("errTimeout");
+    throw i18nError("errNetwork", API_BASE);
   } finally {
     clearTimeout(timer);
   }
 
-  if (!res.ok) throw new Error(`Сервер вернул ошибку (код ${res.status}). Проверьте параметры запроса.`);
+  if (!res.ok) throw i18nError("errStatus", res.status);
   const data = await res.json().catch(() => null);
-  if (!data || !data.status) throw new Error("Сервер вернул ответ в неожиданном формате.");
+  if (!data || !data.status) throw i18nError("errFormat");
   return data;
 }
 
@@ -194,16 +194,17 @@ async function loadOptions() {
   fillSelect($("city"), opts.cities);
   fillSelect($("event_type"), opts.event_formats);
   fillSelect($("category"), opts.categories);
-  fillSelect($("language"), opts.languages, "любой");
-  renderLangChips(opts.languages);
+  fillSelect($("language"), opts.languages, true);
+  formLanguages = opts.languages;
+  renderLangChips();
 }
 
 // Чипы языка: одиночный выбор, значение пишем в скрытый select#language (его читает readForm)
-function renderLangChips(languages) {
+function renderLangChips() {
   const box = $("langChips");
   box.innerHTML = "";
-  [""].concat(languages).forEach((lang) => {
-    const b = el("button", "lang-chip", lang || "любой");
+  [""].concat(formLanguages).forEach((lang) => {
+    const b = el("button", "lang-chip", lang ? vl(lang) : t("anyLang"));
     b.type = "button";
     b.setAttribute("role", "radio");
     b.dataset.lang = lang;
@@ -223,21 +224,16 @@ function syncLangChips() {
 // Подсказка над полем бюджета: «до 400 000 ₸»
 function syncBudgetHint() {
   const v = Number($("budget_kzt").value);
-  $("budgetHint").textContent = v > 0 ? `до ${formatPrice(v)} ₸` : "";
+  $("budgetHint").textContent = v > 0 ? t("upTo", formatPrice(v)) : "";
 }
 
 // ---------- Отрисовка ----------
 
 // Причины отсева с ненулевым количеством: [{key, count, label}]
 function excludedItems(excluded) {
-  return Object.keys(EXCLUDED_LABELS)
+  return EXCLUDED_KEYS
     .filter((k) => excluded && excluded[k] > 0)
-    .map((k) => ({ key: k, count: excluded[k], label: excludedLabel(k, excluded[k]) }));
-}
-
-// "1 кандидат" / "2 кандидата" / "5 кандидатов"
-function candidatesWord(n) {
-  return plural(n, "кандидат", "кандидата", "кандидатов");
+    .map((k) => ({ key: k, count: excluded[k], label: t("excludedLabel", k, excluded[k]) }));
 }
 
 function renderCard(card, rank) {
@@ -249,25 +245,28 @@ function renderCard(card, rank) {
   const who = el("div", "who");
   const nameLine = el("div", "name-line");
   nameLine.appendChild(el("h3", "name", card.name));
-  if (card.synthetic) nameLine.appendChild(el("span", "badge", "синтетический профиль"));
+  if (card.synthetic) nameLine.appendChild(el("span", "badge", t("synthetic")));
   who.appendChild(nameLine);
   const where = el("div", "where");
-  where.appendChild(document.createTextNode(`${card.category} · `));
+  where.appendChild(document.createTextNode(`${vl(card.category)} · `));
   where.appendChild(icon("pin", 14));
-  where.appendChild(document.createTextNode(card.city));
+  where.appendChild(document.createTextNode(vl(card.city)));
   who.appendChild(where);
   head.appendChild(who);
   const priceBox = el("div", "price-box");
-  priceBox.appendChild(el("span", "price-label", "Стоимость"));
-  priceBox.appendChild(el("span", "price", `от ${formatPrice(card.price_from_kzt)} ₸`));
+  priceBox.appendChild(el("span", "price-label", t("price")));
+  priceBox.appendChild(el("span", "price", t("priceFrom", formatPrice(card.price_from_kzt))));
   head.appendChild(priceBox);
   node.appendChild(head);
 
-  // Главное на карточке — объяснение, крупно и в кавычках
+  // Главное на карточке — объяснение, крупно и в кавычках. Текст от бэкенда — как есть.
   const why = el("blockquote", "why");
-  why.setAttribute("aria-label", "Почему именно этот подрядчик");
+  why.setAttribute("aria-label", t("whyAria"));
   why.appendChild(icon("trend", 22));
-  why.appendChild(el("p", "explanation", `«${card.explanation}»`));
+  const txt = el("div", "why-text");
+  txt.appendChild(el("p", "explanation", `«${card.explanation}»`));
+  if (t("explNote")) txt.appendChild(el("p", "expl-note", t("explNote"))); // «объяснение на русском» для KZ/EN
+  why.appendChild(txt);
   node.appendChild(why);
   return node;
 }
@@ -284,22 +283,28 @@ function banner(kind, iconName, title, message, hint) {
   return box;
 }
 
+// Имена из excluded_list, сгруппированные по причине
+function namesByReason(data) {
+  const names = {};
+  (data.excluded_list || []).forEach((x) => {
+    if (x && x.name && x.reason) (names[x.reason] = names[x.reason] || []).push(x.name);
+  });
+  return names;
+}
+
 // Полоса «Отсеяно N кандидатов: …» под карточками.
 // Если бэкенд вернул excluded_list [{name, reason}], по кнопке раскрываются имена по причинам.
 function renderExcludedBar(data, openByDefault) {
   const items = excludedItems(data.excluded);
   if (!items.length) return null;
   const total = items.reduce((s, i) => s + i.count, 0);
-  const names = {};
-  (data.excluded_list || []).forEach((x) => {
-    if (x && x.name && x.reason) (names[x.reason] = names[x.reason] || []).push(x.name);
-  });
+  const names = namesByReason(data);
   const hasNames = Object.keys(names).length > 0;
 
   const line = el("div", "excluded-line");
   line.appendChild(icon("info", 18));
   const text = el("span", "excluded-text");
-  text.appendChild(el("strong", "", `Отсеяно ${total} ${candidatesWord(total)}: `));
+  text.appendChild(el("strong", "", t("excludedTotal", total)));
   text.appendChild(document.createTextNode(items.map((i) => `${i.count} ${i.label}`).join(" · ")));
   line.appendChild(text);
 
@@ -315,8 +320,8 @@ function renderExcludedBar(data, openByDefault) {
   const summary = el("summary");
   summary.appendChild(line);
   const toggle = el("span", "excluded-toggle");
-  toggle.appendChild(el("span", "t-show", "Показать детали отсева"));
-  toggle.appendChild(el("span", "t-hide", "Скрыть детали"));
+  toggle.appendChild(el("span", "t-show", t("showDetails")));
+  toggle.appendChild(el("span", "t-hide", t("hideDetails")));
   toggle.appendChild(icon("chevron", 16));
   summary.appendChild(toggle);
   box.appendChild(summary);
@@ -335,15 +340,6 @@ function renderExcludedBar(data, openByDefault) {
   return box;
 }
 
-// Что писать под зачёркнутым именем: причина отсева своими словами
-const REASON_SHORT = {
-  busy_on_date: (req) => `занят ${formatDate(req.date)}`,
-  over_budget: () => "дороже бюджета",
-  wrong_format: () => "не берёт этот формат",
-  wrong_language: () => "не работает на этом языке",
-  too_few_hours: () => "не может работать столько часов"
-};
-
 // Карточка «Прозрачность алгоритма подбора»: итог фильтрации цифрами и тегами,
 // а если бэкенд прислал excluded_list — зачёркнутые имена с причиной.
 function renderTransparencyCard(req, data) {
@@ -357,9 +353,9 @@ function renderTransparencyCard(req, data) {
   const head = el("div", "tc-head");
   const h = el("h3", "tc-title");
   h.appendChild(icon("funnel", 18));
-  h.appendChild(document.createTextNode("Прозрачность алгоритма подбора"));
+  h.appendChild(document.createTextNode(t("tcTitle")));
   head.appendChild(h);
-  head.appendChild(el("span", "tc-total", `Всего проверено: ${total} ${candidatesWord(total)}`));
+  head.appendChild(el("span", "tc-total", t("tcTotal", total)));
   box.appendChild(head);
 
   // Итог фильтрации: основные причины показываем и с нулём, язык/часы — если были в запросе
@@ -367,14 +363,14 @@ function renderTransparencyCard(req, data) {
   if (req.language || ex.wrong_language) keys.push("wrong_language");
   if (req.hours || ex.too_few_hours) keys.push("too_few_hours");
   const parts = keys.map((k) => {
-    const txt = `${ex[k] || 0} ${excludedLabel(k, ex[k] || 0)}`;
+    const txt = `${ex[k] || 0} ${t("excludedLabel", k, ex[k] || 0)}`;
     return k === "busy_on_date" ? `${txt} (${formatDate(req.date)})` : txt;
   });
 
   const result = el("div", "tc-result");
   const txt = el("div", "tc-result-text");
-  txt.appendChild(el("div", "tc-label", "Результат фильтрации"));
-  txt.appendChild(el("div", "", `Отсеяно: ${parts.join(" · ")}`));
+  txt.appendChild(el("div", "tc-label", t("tcResult")));
+  txt.appendChild(el("div", "", t("tcExcluded", parts.join(" · "))));
   result.appendChild(txt);
   const tags = el("div", "tc-tags");
   excludedItems(ex).forEach((i) => tags.appendChild(el("span", `tag ${i.key}`, `${i.count} ${i.label}`)));
@@ -384,14 +380,14 @@ function renderTransparencyCard(req, data) {
   // Зачёркнутые имена — только если они реально пришли в ответе
   const list = (data.excluded_list || []).filter((x) => x && x.name && x.reason);
   if (list.length) {
-    box.appendChild(el("div", "tc-label", "Подрядчики вне выборки"));
+    box.appendChild(el("div", "tc-label", t("tcOut")));
     const grid = el("div", "out-list");
     list.forEach((x) => {
       const item = el("div", `out ${x.reason}`);
       const main = el("div", "out-main");
       main.appendChild(el("s", "out-name", x.name));
-      const why = REASON_SHORT[x.reason];
-      main.appendChild(el("span", "out-reason", why ? why(req) : x.reason));
+      const why = EXCLUDED_KEYS.includes(x.reason) ? t("reasonShort", x.reason, formatDate(req.date)) : x.reason;
+      main.appendChild(el("span", "out-reason", why));
       item.appendChild(main);
       if (x.price_from_kzt) item.appendChild(el("span", "out-price", `${formatPrice(x.price_from_kzt)} ₸`));
       grid.appendChild(item);
@@ -410,32 +406,31 @@ function renderNoCategory(req, data, withActions) {
   ic.classList.add("nocat-icon");
   head.appendChild(ic);
   const titles = el("div");
-  titles.appendChild(el("span", "nocat-label", "Нет категории в городе"));
-  const where = req.city === "Зарубежье" ? "В локации" : "В городе";
-  titles.appendChild(el("h2", "nocat-title", `${where} «${req.city}» нет подрядчиков категории «${req.category}»`));
+  titles.appendChild(el("span", "nocat-label", t("nocatLabel")));
+  titles.appendChild(el("h2", "nocat-title", t("nocatTitle", vl(req.city), vl(req.category), req.city === "Зарубежье")));
   head.appendChild(titles);
   box.appendChild(head);
 
   const why = el("div", "nocat-why");
   const wh = el("div", "nocat-why-title");
   wh.appendChild(icon("bulb", 20));
-  wh.appendChild(document.createTextNode("Почему это произошло?"));
+  wh.appendChild(document.createTextNode(t("nocatWhy")));
   why.appendChild(wh);
-  why.appendChild(el("p", "", data.message || "В каталоге этого города нет подрядчиков такой категории."));
+  why.appendChild(el("p", "", data.message || t("nocatFallback")));
   box.appendChild(why);
 
   // Только города, которые есть в форме и отличаются от текущего
   const cityOptions = Array.from($("city").options).map((o) => o.value);
-  const targets = [["Алматы", "Искать в Алматы"], ["Астана", "Искать в Астане"]]
+  const targets = [["Алматы", "searchAlmaty"], ["Астана", "searchAstana"]]
     .filter(([c]) => c !== req.city && cityOptions.includes(c));
   if (withActions && targets.length) {
-    box.appendChild(el("div", "nocat-actions-label", "Что можно сделать"));
+    box.appendChild(el("div", "nocat-actions-label", t("nocatActions")));
     const actions = el("div", "nocat-actions");
-    targets.forEach(([c, label]) => {
+    targets.forEach(([c, key]) => {
       const b = el("button", "secondary");
       b.type = "button";
       b.appendChild(icon("building", 18));
-      b.appendChild(document.createTextNode(label));
+      b.appendChild(document.createTextNode(t(key)));
       b.addEventListener("click", () => {
         $("city").value = c;
         presetButtons.forEach((x) => x.classList.remove("active"));
@@ -456,46 +451,33 @@ function renderNoneFitHero(data) {
   ic.classList.add("nf-hero-icon");
   box.appendChild(ic);
   const body = el("div", "nf-body");
-  body.appendChild(el("span", "nf-label", "Никто не подошёл"));
-  body.appendChild(el("h2", "nf-title", "Кандидаты есть, но по вашим критериям никто не подошёл"));
+  body.appendChild(el("span", "nf-label", t("nfLabel")));
+  body.appendChild(el("h2", "nf-title", t("nfTitle")));
   if (data.message) body.appendChild(el("p", "nf-message", data.message));
   box.appendChild(body);
   return box;
 }
 
-// Для каждой причины: иконка, заголовок и короткий факт — всё из запроса и excluded
-const FUNNEL_REASONS = {
-  busy_on_date: { icon: "lock", title: (r) => `Заняты на дату ${formatDate(r.date)}`, text: () => "У этих подрядчиков в календаре уже стоит бронь на выбранную дату." },
-  over_budget: { icon: "wallet", title: (r) => `Дороже бюджета ${formatPrice(r.budget_kzt).replace(/ /g, "\u00a0")}\u00a0₸`, text: () => "Их минимальная цена («от») выше вашего бюджета." }, // сумма не рвётся переносом
-  wrong_format: { icon: "tags", title: (r) => `Не берут формат «${r.event_type}»`, text: () => "Этот тип мероприятия не указан в их профиле." },
-  wrong_language: { icon: "lang", title: (r) => `Не ведут на языке «${r.language}»`, text: () => "Этого языка нет в списке языков их работы." },
-  too_few_hours: { icon: "clock", title: (r) => `Не работают ${r.hours} ч`, text: () => "Максимум часов на площадке у них меньше запрошенного." }
-};
-
-function countWord(n) {
-  return plural(n, "подрядчик", "подрядчика", "подрядчиков");
-}
+// Иконки причин; заголовок и текст — из i18n (t("reason")[key])
+const REASON_ICONS = { busy_on_date: "lock", over_budget: "wallet", wrong_format: "tags", wrong_language: "lang", too_few_hours: "clock" };
 
 // Воронка: полоса из реальных счётчиков excluded (ширина сегмента ∝ числу), легенда и строки причин
 function renderFunnel(req, data) {
   const items = excludedItems(data.excluded);
   if (!items.length) return null;
   const total = items.reduce((s, i) => s + i.count, 0);
-  const names = {};
-  (data.excluded_list || []).forEach((x) => {
-    if (x && x.name && x.reason) (names[x.reason] = names[x.reason] || []).push(x.name);
-  });
+  const names = namesByReason(data);
 
   const box = el("section", "funnel");
   const head = el("div", "funnel-head");
   const ht = el("div");
   const h = el("h3", "funnel-title");
   h.appendChild(icon("funnel", 20));
-  h.appendChild(document.createTextNode("Почему отсеялись кандидаты — прозрачность алгоритма"));
+  h.appendChild(document.createTextNode(t("funnelTitle")));
   ht.appendChild(h);
-  ht.appendChild(el("p", "funnel-sub", `Разбор ${total} ${candidatesWord(total)} по причинам отсева`));
+  ht.appendChild(el("p", "funnel-sub", t("funnelSub", total)));
   head.appendChild(ht);
-  head.appendChild(el("span", "funnel-chip", `Воронка: ${total} → 0`));
+  head.appendChild(el("span", "funnel-chip", t("funnelChip", total)));
   box.appendChild(head);
 
   const barBox = el("div", "funnel-bar-box");
@@ -518,20 +500,28 @@ function renderFunnel(req, data) {
   barBox.appendChild(legend);
   box.appendChild(barBox);
 
+  // Данные для заголовков причин: всё из запроса пользователя
+  const facts = {
+    date: formatDate(req.date),
+    budget: `${formatPrice(req.budget_kzt).replace(/ /g, " ")} ₸`, // сумма не рвётся переносом
+    format: vl(req.event_type),
+    language: vl(req.language),
+    hours: req.hours
+  };
   const rows = el("div", "funnel-rows");
   items.forEach((i) => {
-    const cfg = FUNNEL_REASONS[i.key];
+    const [titleFn, text] = t("reason")[i.key];
     const row = el("div", `frow ${i.key}`);
-    const ic = icon(cfg ? cfg.icon : "info", 20);
+    const ic = icon(REASON_ICONS[i.key] || "info", 20);
     ic.classList.add("frow-icon");
     row.appendChild(ic);
     const body = el("div", "frow-body");
-    const t = el("div", "frow-title");
-    t.appendChild(el("span", "", cfg ? cfg.title(req) : i.label));
-    t.appendChild(el("span", "frow-badge", `${i.count} ${countWord(i.count)}`));
-    body.appendChild(t);
-    body.appendChild(el("p", "frow-text", cfg ? cfg.text(req) : ""));
-    if (names[i.key]) body.appendChild(el("p", "frow-names", `Кто: ${names[i.key].join(", ")}`));
+    const tt = el("div", "frow-title");
+    tt.appendChild(el("span", "", titleFn(facts)));
+    tt.appendChild(el("span", "frow-badge", t("contractors", i.count)));
+    body.appendChild(tt);
+    body.appendChild(el("p", "frow-text", text));
+    if (names[i.key]) body.appendChild(el("p", "frow-names", t("who") + names[i.key].join(", ")));
     row.appendChild(body);
     rows.appendChild(row);
   });
@@ -548,20 +538,20 @@ function showQuerySummary(req, data) {
   const head = el("div", "qs-head");
   const h = el("h2", "qs-title");
   h.appendChild(icon("sliders", 18));
-  h.appendChild(document.createTextNode("Заданные условия"));
+  h.appendChild(document.createTextNode(t("qsTitle")));
   head.appendChild(h);
-  head.appendChild(el("span", "qs-zero", "0 найдено"));
+  head.appendChild(el("span", "qs-zero", t("qsZero")));
   box.appendChild(head);
 
   const rows = [
-    ["Город", req.city, null],
-    ["Дата", formatDate(req.date), "busy_on_date"],
-    ["Формат", req.event_type, "wrong_format"],
-    ["Категория", req.category, null],
-    ["Бюджет", `до ${formatPrice(req.budget_kzt)} ₸`, "over_budget"]
+    [t("qsCity"), vl(req.city), null],
+    [t("qsDate"), formatDate(req.date), "busy_on_date"],
+    [t("qsFormat"), vl(req.event_type), "wrong_format"],
+    [t("qsCategory"), vl(req.category), null],
+    [t("qsBudget"), t("upTo", formatPrice(req.budget_kzt)), "over_budget"]
   ];
-  if (req.hours) rows.push(["Длительность", `${req.hours} ч`, "too_few_hours"]);
-  rows.push(["Язык", req.language || "любой", "wrong_language"]);
+  if (req.hours) rows.push([t("qsHours"), t("hoursShort", req.hours), "too_few_hours"]);
+  rows.push([t("qsLanguage"), req.language ? vl(req.language) : t("anyLang"), "wrong_language"]);
 
   rows.forEach(([label, value, key]) => {
     const hit = key && ex[key] > 0;
@@ -570,14 +560,14 @@ function showQuerySummary(req, data) {
     top.appendChild(el("span", "qs-label", label));
     top.appendChild(el("span", "qs-value", value));
     r.appendChild(top);
-    if (hit) r.appendChild(el("div", "qs-note", `отсеяно по этому условию: ${ex[key]}`));
+    if (hit) r.appendChild(el("div", "qs-note", t("qsNote", ex[key])));
     box.appendChild(r);
   });
 
   const btn = el("button", "primary");
   btn.type = "button";
   btn.appendChild(icon("sliders", 18));
-  btn.appendChild(document.createTextNode("Изменить условия"));
+  btn.appendChild(document.createTextNode(t("qsEdit")));
   btn.addEventListener("click", () => { showForm(); $("budget_kzt").focus(); });
   box.appendChild(btn);
 
@@ -596,7 +586,6 @@ function renderPanel(req, data, dateLabel) {
   if (dateLabel) panel.appendChild(el("div", "panel-date", formatDate(req.date)));
 
   const cards = data.cards || [];
-  const title = STATUS_TITLES[data.status] || data.status;
 
   if (data.status === "found") {
     // 3 из 3 — без баннера (итог в сводке), сообщение бэкенда — тихой строкой.
@@ -604,9 +593,7 @@ function renderPanel(req, data, dateLabel) {
     if (cards.length >= 3) {
       if (data.message) panel.appendChild(el("p", "found-note", data.message));
     } else {
-      const n = cards.length;
-      const b = banner("warning fewer", "alert",
-        n === 1 ? "Подобран только 1 подрядчик" : `Подобрано только ${n} ${countWord(n)}`, data.message);
+      const b = banner("warning fewer", "alert", t("fewerTitle", cards.length), data.message);
       panel.appendChild(b);
       if (!dateLabel) addCompareReveal(req, b.querySelector(".banner-body"), panel); // в режиме сравнения не нужно
     }
@@ -632,22 +619,28 @@ function renderPanel(req, data, dateLabel) {
   else bar = renderExcludedBar(data, false);
   if (bar) panel.appendChild(bar);
 
-  if (demoCheckbox.checked) panel.appendChild(el("p", "mock-note", "Демо-режим: ответ из локальных mock-данных, не с сервера."));
+  if (demoCheckbox.checked) panel.appendChild(el("p", "mock-note", t("mockNote")));
   return panel;
 }
 
 // Загрузка: 3 карточки-скелетона с переливом
 function showLoading() {
   resultsEl.innerHTML = "";
-  resultsEl.appendChild(el("p", "loading-text", "Подбираем подрядчиков… это может занять до 10 секунд"));
+  resultsEl.appendChild(el("p", "loading-text", t("loading")));
   const list = el("div", "cards");
   for (let i = 0; i < 3; i++) list.appendChild(el("div", "skeleton"));
   resultsEl.appendChild(list);
 }
 
-function showError(message) {
-  errorEl.textContent = message;
+// Ошибку запоминаем, чтобы перевести её при смене языка
+function showError(e) {
+  lastError = e;
+  errorEl.textContent = e.i18n ? t(e.i18n.key, ...e.i18n.args) : e.message;
   errorEl.hidden = false;
+}
+function hideError() {
+  lastError = null;
+  errorEl.hidden = true;
 }
 
 // Сводка запроса + «Сравнить с другой датой» (тот же запрос, другая дата, результаты рядом)
@@ -656,43 +649,48 @@ function renderSummary(req, comparing, data) {
 
   const left = el("div", "summary-left");
   const parts = el("div", "summary-parts");
-  const list = requestParts(req);
-  if (comparing) list.splice(1, 1); // в режиме сравнения даты показаны над каждой колонкой
+  let list = requestParts(req);
+  if (comparing) list = list.filter((p) => p.cls !== "date"); // в режиме сравнения даты показаны над каждой колонкой
   list.forEach((p, i) => {
     if (i) parts.appendChild(el("span", "dot", "·"));
-    parts.appendChild(el("span", p.startsWith("до ") ? "budget" : "", p));
+    parts.appendChild(el("span", p.cls === "budget" ? "budget" : "", p.text));
   });
   left.appendChild(parts);
   // «3 из 10 кандидатов»: всего = карточки + все отсеянные (только если категория в городе есть)
   if (data && data.status !== "no_category") {
     const shown = (data.cards || []).length;
     const total = shown + excludedItems(data.excluded).reduce((s, i) => s + i.count, 0);
-    if (total > 0) left.appendChild(el("span", "count-chip", `${shown} из ${total} ${plural(total, "кандидата", "кандидатов", "кандидатов")}`));
+    if (total > 0) left.appendChild(el("span", "count-chip", t("countChip", shown, total)));
   }
   bar.appendChild(left);
 
-  // Когда найдено меньше 3, кнопка сравнения стоит в янтарном баннере — здесь не дублируем
+  // Когда найдено меньше 3 или никто не подошёл, сравнение — ссылкой в баннере; здесь не дублируем
   const fewer = data && data.status === "found" && (data.cards || []).length < 3;
   const noCategory = data && data.status === "no_category"; // категории нет ни на какую дату
-  const noneFit = data && data.status === "none_fit"; // кнопка сравнения — внизу панели
+  const noneFit = data && data.status === "none_fit";
   if (!fewer && !noCategory && !noneFit) bar.appendChild(compareControls(req, "secondary"));
   return bar;
 }
 
-// Ссылка «Сравнить с другой датой →» внутри баннера; по клику под баннером
-// раскрывается компактная строка: поле даты + кнопка «Сравнить».
-function addCompareReveal(req, linkParent, panel) {
-  const link = el("button", "link-btn", "Сравнить с другой датой →");
-  link.type = "button";
-  const row = el("div", "compare-inline");
-  row.hidden = true;
+function compareDateInput(req) {
   const input = el("input");
   input.type = "date";
   input.min = "2026-09-23";
   input.max = "2026-12-31";
   input.value = req.date < "2026-12-01" ? "2026-12-26" : "2026-10-17";
-  input.setAttribute("aria-label", "Дата для сравнения");
-  const go = el("button", "outline-sm", "Сравнить");
+  input.setAttribute("aria-label", t("compareAria"));
+  return input;
+}
+
+// Ссылка «Сравнить с другой датой →» внутри баннера; по клику под баннером
+// раскрывается компактная строка: поле даты + кнопка «Сравнить».
+function addCompareReveal(req, linkParent, panel) {
+  const link = el("button", "link-btn", t("compareLink"));
+  link.type = "button";
+  const row = el("div", "compare-inline");
+  row.hidden = true;
+  const input = compareDateInput(req);
+  const go = el("button", "outline-sm", t("compareGo"));
   go.type = "button";
   go.addEventListener("click", () => runCompare(req, input.value));
   row.appendChild(input);
@@ -710,38 +708,61 @@ function addCompareReveal(req, linkParent, panel) {
 // Поле даты + «Сравнить с другой датой»: тот же запрос на другую дату, результаты рядом
 function compareControls(req, btnClass) {
   const compare = el("div", "compare");
-  const input = el("input");
-  input.type = "date";
-  input.min = "2026-09-23";
-  input.max = "2026-12-31";
-  input.value = req.date < "2026-12-01" ? "2026-12-26" : "2026-10-17";
-  input.setAttribute("aria-label", "Дата для сравнения");
+  const input = compareDateInput(req);
   const btn = el("button", btnClass);
   btn.type = "button";
   btn.appendChild(icon("calendar", 18));
-  btn.appendChild(document.createTextNode("Сравнить с другой датой"));
+  btn.appendChild(document.createTextNode(t("compareBtn")));
   btn.addEventListener("click", () => runCompare(req, input.value));
   compare.appendChild(input);
   compare.appendChild(btn);
   return compare;
 }
 
+// Нарисовать последний результат (после запроса или при смене языка — без нового запроса)
+function renderView(onLangSwitch) {
+  if (!lastView) return;
+  resultsEl.innerHTML = "";
+  if (lastView.mode === "search") {
+    const { req, data } = lastView;
+    resultsEl.appendChild(renderSummary(req, false, data));
+    const panels = el("div", "panels");
+    panels.appendChild(renderPanel(req, data, false));
+    resultsEl.appendChild(panels);
+    // При смене языка не сворачиваем форму, если пользователь уже нажал «Изменить условия»
+    const summaryOpen = !$("querySummary").hidden;
+    if (data.status === "none_fit" && (!onLangSwitch || summaryOpen)) showQuerySummary(req, data);
+    else if (data.status !== "none_fit") showForm();
+  } else {
+    const { req, req2, a, b } = lastView;
+    showForm();
+    resultsEl.appendChild(renderSummary(req, true));
+    const panels = el("div", "panels two");
+    panels.appendChild(renderPanel(req, a, true));
+    panels.appendChild(renderPanel(req2, b, true));
+    resultsEl.appendChild(panels);
+  }
+}
+
 // ---------- Сценарии ----------
 
 async function withLoading(fn) {
-  errorEl.hidden = true;
+  hideError();
+  loading = true;
   submitBtn.disabled = true;
-  $("submitText").textContent = "Подбираем…";
+  $("submitText").textContent = t("submitting");
   showLoading();
   try {
     await fn();
   } catch (e) {
+    lastView = null;
     resultsEl.innerHTML = "";
     showForm();
-    showError(e.message);
+    showError(e);
   } finally {
+    loading = false;
     submitBtn.disabled = false;
-    $("submitText").textContent = "Подобрать";
+    $("submitText").textContent = t("submit");
   }
 }
 
@@ -749,31 +770,21 @@ function runSearch() {
   const req = readForm();
   return withLoading(async () => {
     const data = await match(req);
-    resultsEl.innerHTML = "";
-    resultsEl.appendChild(renderSummary(req, false, data));
-    const panels = el("div", "panels");
-    panels.appendChild(renderPanel(req, data, false));
-    resultsEl.appendChild(panels);
-    if (data.status === "none_fit") showQuerySummary(req, data);
-    else showForm();
+    lastView = { mode: "search", req, data };
+    renderView(false);
   });
 }
 
 function runCompare(req, otherDate) {
   if (!otherDate || otherDate === req.date) {
-    showError("Выберите другую дату для сравнения.");
+    showError(i18nError("errSameDate"));
     return;
   }
   const req2 = { ...req, date: otherDate };
   return withLoading(async () => {
     const [a, b] = await Promise.all([match(req), match(req2)]);
-    showForm();
-    resultsEl.innerHTML = "";
-    resultsEl.appendChild(renderSummary(req, true));
-    const panels = el("div", "panels two");
-    panels.appendChild(renderPanel(req, a, true));
-    panels.appendChild(renderPanel(req2, b, true));
-    resultsEl.appendChild(panels);
+    lastView = { mode: "compare", req, req2, a, b };
+    renderView(false);
   });
 }
 
@@ -789,12 +800,48 @@ function applyPreset(p) {
   syncBudgetHint();
 }
 
+// ---------- Язык интерфейса ----------
+
+// Статичные тексты из index.html: data-i18n (текст), data-i18n-ph (placeholder),
+// data-i18n-title (подсказка), data-i18n-aria (aria-label)
+function applyStaticTexts() {
+  document.documentElement.lang = UI_LANG;
+  document.title = t("title");
+  document.querySelectorAll("[data-i18n]").forEach((n) => { n.textContent = t(n.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-ph]").forEach((n) => { n.placeholder = t(n.dataset.i18nPh); });
+  document.querySelectorAll("[data-i18n-title]").forEach((n) => { n.title = t(n.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-aria]").forEach((n) => { n.setAttribute("aria-label", t(n.dataset.i18nAria)); });
+  if (loading) $("submitText").textContent = t("submitting");
+  document.querySelectorAll("[data-ui-lang]").forEach((b) => {
+    const on = b.dataset.uiLang === UI_LANG;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
+function setUiLang(code) {
+  UI_LANG = code;
+  saveUiLang();
+  applyStaticTexts();
+  relabelSelects();
+  renderLangChips();
+  syncBudgetHint();
+  if (!loading) renderView(true);
+  if (lastError) showError(lastError);
+}
+
 // ---------- Старт ----------
+
+loadUiLang();
+applyStaticTexts();
+document.querySelectorAll("[data-ui-lang]").forEach((b) => {
+  b.addEventListener("click", () => setUiLang(b.dataset.uiLang));
+});
 
 demoCheckbox.checked = loadDemoFlag();
 demoCheckbox.addEventListener("change", () => {
   saveDemoFlag(demoCheckbox.checked);
-  errorEl.hidden = true;
+  hideError();
 });
 
 form.addEventListener("submit", (e) => {
