@@ -796,6 +796,7 @@ function applyPreset(p) {
   $("budget_kzt").value = p.budget_kzt;
   $("hours").value = "";
   $("language").value = "";
+  form.querySelectorAll("input").forEach((i) => i.setCustomValidity("")); // значения заданы кодом — старые ошибки неактуальны
   syncLangChips();
   syncBudgetHint();
 }
@@ -860,5 +861,24 @@ presetButtons.forEach((btn) => {
 });
 
 $("budget_kzt").addEventListener("input", syncBudgetHint);
+
+// Подсказки проверки полей — на языке интерфейса, а не браузера.
+// Браузер сам проверяет required/min/max/step; мы только подменяем текст сообщения.
+function validityMessage(input) {
+  const v = input.validity;
+  const bound = (x) => (input.type === "date" ? formatDate(x) : formatPrice(Number(x)));
+  if (v.valueMissing) return t("vRequired");
+  if (v.badInput) return t("vNumber");
+  if (v.rangeUnderflow) return t("vMin", bound(input.min));
+  if (v.rangeOverflow) return t("vMax", bound(input.max));
+  if (v.stepMismatch) return t("vWhole");
+  return "";
+}
+form.querySelectorAll("input").forEach((input) => {
+  input.addEventListener("invalid", () => input.setCustomValidity(validityMessage(input)));
+  input.addEventListener("input", () => input.setCustomValidity("")); // пользователь исправляет — сбрасываем
+});
+// Перед отправкой сбрасываем прошлые сообщения — браузер проверит поля заново
+submitBtn.addEventListener("click", () => form.querySelectorAll("input").forEach((i) => i.setCustomValidity("")));
 
 loadOptions().then(() => applyPreset(PRESETS.dense));

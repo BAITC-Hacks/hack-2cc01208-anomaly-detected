@@ -55,6 +55,12 @@ const I18N = {
     errStatus: (code) => `Сервер вернул ошибку (код ${code}). Проверьте параметры запроса.`,
     errFormat: "Сервер вернул ответ в неожиданном формате.",
     errSameDate: "Выберите другую дату для сравнения.",
+    // Проверка полей формы (вместо встроенных подсказок браузера — они на языке браузера)
+    vRequired: "Заполните это поле.",
+    vMin: (v) => `Значение должно быть не меньше ${v}.`,
+    vMax: (v) => `Значение должно быть не больше ${v}.`,
+    vNumber: "Введите число.",
+    vWhole: "Введите целое число.",
 
     synthetic: "синтетический профиль",
     price: "Стоимость",
@@ -163,6 +169,11 @@ const I18N = {
     errStatus: (code) => `Сервер қате қайтарды (код ${code}). Сұрау параметрлерін тексеріңіз.`,
     errFormat: "Сервер күтпеген форматта жауап қайтарды.",
     errSameDate: "Салыстыру үшін басқа күнді таңдаңыз.",
+    vRequired: "Бұл өрісті толтырыңыз.",
+    vMin: (v) => `Мән кемінде ${v} болуы керек.`,
+    vMax: (v) => `Мән ең көбі ${v} болуы керек.`,
+    vNumber: "Сан енгізіңіз.",
+    vWhole: "Бүтін сан енгізіңіз.",
 
     synthetic: "синтетикалық профиль",
     price: "Бағасы",
@@ -271,6 +282,11 @@ const I18N = {
     errStatus: (code) => `The server returned an error (code ${code}). Check the query parameters.`,
     errFormat: "The server returned an unexpected response.",
     errSameDate: "Pick a different date to compare.",
+    vRequired: "Please fill in this field.",
+    vMin: (v) => `Value must be at least ${v}.`,
+    vMax: (v) => `Value must be at most ${v}.`,
+    vNumber: "Please enter a number.",
+    vWhole: "Please enter a whole number.",
 
     synthetic: "synthetic profile",
     price: "Price",
