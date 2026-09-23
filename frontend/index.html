@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Contractor Matcher</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Contractor Matcher</h1>
+    <p class="subtitle">Подбор до 3 подрядчиков под ваше мероприятие — с объяснением, почему каждый подходит.</p>
+  </header>
+
+  <main>
+    <form id="match-form">
+      <div class="field">
+        <label for="city">Город</label>
+        <select id="city" required></select>
+      </div>
+
+      <div class="field">
+        <label for="category">Категория подрядчика</label>
+        <select id="category" required></select>
+      </div>
+
+      <div class="field">
+        <label for="event_type">Тип мероприятия</label>
+        <select id="event_type" required></select>
+      </div>
+
+      <div class="field">
+        <label for="date">Дата мероприятия</label>
+        <input id="date" type="date" required />
+      </div>
+
+      <div class="field">
+        <label for="budget_kzt">Бюджет, ₸</label>
+        <input id="budget_kzt" type="number" min="0" step="10000" required />
+      </div>
+
+      <div class="field">
+        <label for="hours">Длительность, ч <span class="optional">(опционально)</span></label>
+        <input id="hours" type="number" min="0" step="1" />
+      </div>
+
+      <div class="field">
+        <label for="language">Язык <span class="optional">(опционально)</span></label>
+        <select id="language">
+          <option value="">— не важно —</option>
+        </select>
+      </div>
+
+      <button type="submit" id="submit-btn">Подобрать подрядчиков</button>
+    </form>
+
+    <section id="results" aria-live="polite"></section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
