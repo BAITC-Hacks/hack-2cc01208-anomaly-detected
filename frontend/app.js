@@ -27,13 +27,26 @@ const PRESETS = {
 };
 
 // Подписи для причин исключения (поле excluded в ответе)
+// [форма для 1/21/31…, форма для остальных чисел] — глагол согласуется с числом
 const EXCLUDED_LABELS = {
-  busy_on_date: "заняты в эту дату",
-  over_budget: "дороже бюджета",
-  wrong_format: "не берут этот формат",
-  wrong_language: "не работают на этом языке",
-  too_few_hours: "не могут работать столько часов"
+  busy_on_date: ["занят в эту дату", "заняты в эту дату"],
+  over_budget: ["дороже бюджета", "дороже бюджета"],
+  wrong_format: ["не берёт этот формат", "не берут этот формат"],
+  wrong_language: ["не работает на этом языке", "не работают на этом языке"],
+  too_few_hours: ["не может работать столько часов", "не могут работать столько часов"]
 };
+
+// Русское множественное число: plural(5, "подрядчик", "подрядчика", "подрядчиков") → "подрядчиков"
+function plural(n, one, few, many) {
+  const d = n % 10, dd = n % 100;
+  if (d === 1 && dd !== 11) return one;
+  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return few;
+  return many;
+}
+function excludedLabel(key, n) {
+  const [one, many] = EXCLUDED_LABELS[key];
+  return n % 10 === 1 && n % 100 !== 11 ? one : many;
+}
 
 const STATUS_TITLES = {
   found: "Подобрали",
@@ -219,15 +232,12 @@ function syncBudgetHint() {
 function excludedItems(excluded) {
   return Object.keys(EXCLUDED_LABELS)
     .filter((k) => excluded && excluded[k] > 0)
-    .map((k) => ({ key: k, count: excluded[k], label: EXCLUDED_LABELS[k] }));
+    .map((k) => ({ key: k, count: excluded[k], label: excludedLabel(k, excluded[k]) }));
 }
 
 // "1 кандидат" / "2 кандидата" / "5 кандидатов"
 function candidatesWord(n) {
-  const d = n % 10, dd = n % 100;
-  if (d === 1 && dd !== 11) return "кандидат";
-  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return "кандидата";
-  return "кандидатов";
+  return plural(n, "кандидат", "кандидата", "кандидатов");
 }
 
 function renderCard(card, rank) {
@@ -357,7 +367,7 @@ function renderTransparencyCard(req, data) {
   if (req.language || ex.wrong_language) keys.push("wrong_language");
   if (req.hours || ex.too_few_hours) keys.push("too_few_hours");
   const parts = keys.map((k) => {
-    const txt = `${ex[k] || 0} ${EXCLUDED_LABELS[k]}`;
+    const txt = `${ex[k] || 0} ${excludedLabel(k, ex[k] || 0)}`;
     return k === "busy_on_date" ? `${txt} (${formatDate(req.date)})` : txt;
   });
 
@@ -445,7 +455,7 @@ function renderNoneFitHero(data) {
   const ic = icon("alert", 26);
   ic.classList.add("nf-hero-icon");
   box.appendChild(ic);
-  const body = el("div");
+  const body = el("div", "nf-body");
   body.appendChild(el("span", "nf-label", "Никто не подошёл"));
   body.appendChild(el("h2", "nf-title", "Кандидаты есть, но по вашим критериям никто не подошёл"));
   if (data.message) body.appendChild(el("p", "nf-message", data.message));
@@ -463,10 +473,7 @@ const FUNNEL_REASONS = {
 };
 
 function countWord(n) {
-  const d = n % 10, dd = n % 100;
-  if (d === 1 && dd !== 11) return "подрядчик";
-  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return "подрядчика";
-  return "подрядчиков";
+  return plural(n, "подрядчик", "подрядчика", "подрядчиков");
 }
 
 // Воронка: полоса из реальных счётчиков excluded (ширина сегмента ∝ числу), легенда и строки причин
@@ -599,14 +606,16 @@ function renderPanel(req, data, dateLabel) {
     } else {
       const n = cards.length;
       const b = banner("warning fewer", "alert",
-        n === 1 ? "Подобран только 1 подрядчик" : `Подобрано только ${n} подрядчика`, data.message);
-      if (!dateLabel) b.appendChild(compareControls(req, "amber")); // в режиме сравнения кнопка не нужна
+        n === 1 ? "Подобран только 1 подрядчик" : `Подобрано только ${n} ${countWord(n)}`, data.message);
       panel.appendChild(b);
+      if (!dateLabel) addCompareReveal(req, b.querySelector(".banner-body"), panel); // в режиме сравнения не нужно
     }
   } else if (data.status === "no_category") {
     panel.appendChild(renderNoCategory(req, data, !dateLabel));
   } else {
-    panel.appendChild(renderNoneFitHero(data));
+    const hero = renderNoneFitHero(data);
+    panel.appendChild(hero);
+    if (!dateLabel) addCompareReveal(req, hero.querySelector(".nf-body"), panel);
   }
 
   if (cards.length) {
@@ -622,17 +631,6 @@ function renderPanel(req, data, dateLabel) {
   else if (data.status === "none_fit") bar = renderFunnel(req, data);
   else bar = renderExcludedBar(data, false);
   if (bar) panel.appendChild(bar);
-
-  // none_fit: в конце — предложение проверить ту же заявку на другую дату
-  if (data.status === "none_fit" && !dateLabel) {
-    const box = el("div", "retry-date");
-    const t = el("div", "retry-text");
-    t.appendChild(el("strong", "", "Проверьте другую дату"));
-    t.appendChild(el("span", "", "Тот же запрос, результаты двух дат рядом."));
-    box.appendChild(t);
-    box.appendChild(compareControls(req, "primary-inline"));
-    panel.appendChild(box);
-  }
 
   if (demoCheckbox.checked) panel.appendChild(el("p", "mock-note", "Демо-режим: ответ из локальных mock-данных, не с сервера."));
   return panel;
@@ -669,7 +667,7 @@ function renderSummary(req, comparing, data) {
   if (data && data.status !== "no_category") {
     const shown = (data.cards || []).length;
     const total = shown + excludedItems(data.excluded).reduce((s, i) => s + i.count, 0);
-    if (total > 0) left.appendChild(el("span", "count-chip", `${shown} из ${total} ${total % 10 === 1 && total % 100 !== 11 ? "кандидата" : "кандидатов"}`));
+    if (total > 0) left.appendChild(el("span", "count-chip", `${shown} из ${total} ${plural(total, "кандидата", "кандидатов", "кандидатов")}`));
   }
   bar.appendChild(left);
 
@@ -679,6 +677,34 @@ function renderSummary(req, comparing, data) {
   const noneFit = data && data.status === "none_fit"; // кнопка сравнения — внизу панели
   if (!fewer && !noCategory && !noneFit) bar.appendChild(compareControls(req, "secondary"));
   return bar;
+}
+
+// Ссылка «Сравнить с другой датой →» внутри баннера; по клику под баннером
+// раскрывается компактная строка: поле даты + кнопка «Сравнить».
+function addCompareReveal(req, linkParent, panel) {
+  const link = el("button", "link-btn", "Сравнить с другой датой →");
+  link.type = "button";
+  const row = el("div", "compare-inline");
+  row.hidden = true;
+  const input = el("input");
+  input.type = "date";
+  input.min = "2026-09-23";
+  input.max = "2026-12-31";
+  input.value = req.date < "2026-12-01" ? "2026-12-26" : "2026-10-17";
+  input.setAttribute("aria-label", "Дата для сравнения");
+  const go = el("button", "outline-sm", "Сравнить");
+  go.type = "button";
+  go.addEventListener("click", () => runCompare(req, input.value));
+  row.appendChild(input);
+  row.appendChild(go);
+  link.setAttribute("aria-expanded", "false");
+  link.addEventListener("click", () => {
+    row.hidden = !row.hidden;
+    link.setAttribute("aria-expanded", String(!row.hidden));
+    if (!row.hidden) input.focus();
+  });
+  linkParent.appendChild(link);
+  panel.appendChild(row);
 }
 
 // Поле даты + «Сравнить с другой датой»: тот же запрос на другую дату, результаты рядом
