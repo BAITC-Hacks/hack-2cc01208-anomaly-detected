@@ -129,9 +129,33 @@ class HealthResponse(BaseModel):
     contractors_loaded: int
 
 
+class OptionsResponse(BaseModel):
+    cities: list[str]
+    categories: list[str]
+    event_formats: list[str]
+    languages: list[str]
+
+
+# Computed once at import from the same CONTRACTORS/KNOWN the matcher uses, so
+# the dropdowns can never drift out of sync with what /api/match actually accepts.
+CITIES: list[str] = sorted({c.city for c in CONTRACTORS})
+OPTIONS = OptionsResponse(
+    cities=CITIES,
+    categories=sorted(KNOWN_CATEGORIES.values()),
+    event_formats=sorted(KNOWN.event_formats.values()),
+    languages=sorted(KNOWN.languages.values()),
+)
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", contractors_loaded=len(CONTRACTORS))
+
+
+@app.get("/api/options", response_model=OptionsResponse)
+def options() -> OptionsResponse:
+    """docs/api.md: optional; the frontend falls back to a hardcoded list if this is absent."""
+    return OPTIONS
 
 
 @app.post("/match", response_model=MatchResponse)
